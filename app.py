@@ -3,6 +3,7 @@ from google import genai
 from google.genai import types
 from docx import Document
 from io import BytesIO
+from streamlit_mic_recorder import speech_to_text  # Nueva librería agregada
 
 # Función para convertir el texto de la IA en un archivo Word (.docx)
 def crear_archivo_word(texto_ficha):
@@ -30,8 +31,38 @@ st.set_page_config(page_title="Asistente de Anamnesis Chile", page_icon="🩺")
 st.title("🩺 Formateador de Anamnesis Clínica")
 st.subheader("Ingrese los datos desordenados del paciente:")
 
-# Entrada de texto del usuario
-datos_sucios = st.text_area("Notas del paciente", height=150, placeholder="Ej: paciente Juan 45 años dolor de cabeza...")
+# Inicializar la memoria del texto para que no se borre al interactuar
+if "notas_paciente" not in st.session_state:
+    st.session_state["notas_paciente"] = ""
+
+# --- SECCIÓN DEL MICRÓFONO ---
+st.write("🎙️ **Dictar notas por voz (Opcional):**")
+texto_dictado = speech_to_text(
+    start_prompt="🎤 Haz clic para hablar",
+    stop_prompt="🛑 Detener y procesar",
+    language="es",
+    use_container_width=True,
+    key="microfono_anamnesis"
+)
+
+# Si el usuario dictó algo, se acumula en la memoria de la sesión
+if texto_dictado:
+    if st.session_state["notas_paciente"]:
+        st.session_state["notas_paciente"] += " " + texto_dictado
+    else:
+        st.session_state["notas_paciente"] = texto_dictado
+
+# Entrada de texto del usuario (se autorellena si usó el micrófono)
+datos_sucios = st.text_area(
+    "Notas del paciente (puedes escribir aquí o editar lo que dictaste):", 
+    value=st.session_state["notas_paciente"],
+    height=150, 
+    placeholder="Ej: paciente Juan 45 años dolor de cabeza..."
+)
+
+# Sincronizar el área de texto con la memoria de la sesión por si el usuario escribe a mano
+st.session_state["notas_paciente"] = datos_sucios
+# ------------------------------
 
 # 2. Conexión con Gemini al presionar el botón
 if st.button("Ordenar Ficha Clínica"):
@@ -42,7 +73,7 @@ if st.button("Ordenar Ficha Clínica"):
             client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
             
             mi_prompt_medico = (
-                "Actúa como un expert en medicina y gestión de fichas clínicas en Chile. "
+                "Actúa como un experto en medicina y gestión de fichas clínicas en Chile. "
                 "Tu tarea es tomar un bloque de texto desordenado proveniente de una anamnesis / entrevista clínica "
                 "y transformarlo en una Ficha Clínica estructurada, profesional y limpia.\n\n"
                 "Utiliza la siguiente estructura:\n"
